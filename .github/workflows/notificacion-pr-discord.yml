@@ -1,0 +1,25 @@
+name: Notificacion por Discord de Pull Request
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d "{\"content\":\"Nuevo Pull Request pendiente de revisión\nPR #${PR_NUMBER}: ${PR_TITLE}\nAutor: ${PR_AUTHOR}\n${PR_URL}\"}" \
+            "$DISCORD_WEBHOOK_URL"
