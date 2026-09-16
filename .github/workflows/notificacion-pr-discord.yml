@@ -70,8 +70,7 @@ jobs:
             --arg url "$PR_URL" \
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
-            --arg head "$HEAD_REF" \
-            --arg base "$BASE_REF" \
+            --arg branches "$HEAD_REF → $BASE_REF" \
             --arg date "$FECHA" \
             '{
               embeds: [{
@@ -81,22 +80,17 @@ jobs:
                   {
                     name: "Autor",
                     value: $author,
-                    inline: true
+                    inline: false
                   },
                   {
                     name: "Issue asociado",
                     value: $issue,
-                    inline: true
+                    inline: false
                   },
                   {
-                    name: "Rama origen",
-                    value: $head,
-                    inline: true
-                  },
-                  {
-                    name: "Rama destino",
-                    value: $base,
-                    inline: true
+                    name: "Ramas",
+                    value: $branches,
+                    inline: false
                   },
                   {
                     name: "Fecha",
