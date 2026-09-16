@@ -24,8 +24,8 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
-          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          MAIN_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_REVIEW_DEVELOP_WEBHOOK }}
+          MAIN_WEBHOOK: ${{ secrets.DISCORD_REVIEW_MAIN_WEBHOOK }}
         run: |
           if [ "$BASE_REF" = "develop" ]; then
             echo "webhook=$DEVELOP_WEBHOOK" >> "$GITHUB_OUTPUT"
@@ -48,65 +48,59 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
+          REPOSITORY: ${{ github.repository }}
 
         run: |
-          # Obtener el primer issue mencionado como #123
-          ISSUE=$(printf '%s' "$PR_BODY" | grep -oE '#[0-9]+' | head -1 || true)
+          ISSUE_NUMBER=$(printf '%s' "$PR_BODY" \
+            | grep -oE '#[0-9]+' \
+            | head -1 \
+            | tr -d '#' || true)
 
-          if [ -z "$ISSUE" ]; then
+          if [ -n "$ISSUE_NUMBER" ]; then
+            ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+          else
             ISSUE="No especificado"
           fi
 
-          # Formatear fecha
-          FECHA=$(date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M UTC')
+          FECHA=$(TZ="America/Montevideo" \
+            date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M')
 
-          # Generar mensaje Embed de Discord
           jq -n \
-            --arg title "PR #$PR_NUMBER — $PR_TITLE" \
+            --arg title "PR #$PR_NUMBER - $PR_TITLE" \
             --arg url "$PR_URL" \
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
             --arg branches "$HEAD_REF → $BASE_REF" \
             --arg date "$FECHA" \
             '{
-              embeds: [
-                {
-                  title: $title,
-                  url: $url,
-                  description: "Pull Request disponible para revisión.",
-                  fields: [
-                    {
-                      name: "Autor",
-                      value: $author,
-                      inline: true
-                    },
-                    {
-                      name: "Issue asociado",
-                      value: $issue,
-                      inline: true
-                    },
-                    {
-                      name: "Ramas",
-                      value: $branches,
-                      inline: false
-                    },
-                    {
-                      name: "Creado",
-                      value: $date,
-                      inline: true
-                    }
-                  ],
-                  footer: {
-                    text: "PIS 2026 · Grupo 10 · Revisión de código"
+              embeds: [{
+                title: $title,
+                url: $url,
+                fields: [
+                  {
+                    name: "Autor",
+                    value: $author,
+                    inline: false
+                  },
+                  {
+                    name: "Issue asociado",
+                    value: $issue,
+                    inline: false
+                  },
+                  {
+                    name: "Ramas",
+                    value: $branches,
+                    inline: false
+                  },
+                  {
+                    name: "Fecha",
+                    value: $date,
+                    inline: false
                   }
-                }
-              ]
+                ]
+              }]
             }' > payload.json
 
-          echo "Payload generado:"
-          cat payload.json
-
-          # Enviar mensaje a Discord
           curl \
             --fail-with-body \
             -H "Content-Type: application/json" \
