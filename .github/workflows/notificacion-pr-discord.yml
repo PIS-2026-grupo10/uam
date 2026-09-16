@@ -24,8 +24,8 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
-          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          MAIN_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_REVIEW_DEVELOP_WEBHOOK }}
+          MAIN_WEBHOOK: ${{ secrets.DISCORD_REVIEW_MAIN_WEBHOOK }}
         run: |
           if [ "$BASE_REF" = "develop" ]; then
             echo "webhook=$DEVELOP_WEBHOOK" >> "$GITHUB_OUTPUT"
@@ -70,7 +70,8 @@ jobs:
             --arg url "$PR_URL" \
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
-            --arg branches "$HEAD_REF → $BASE_REF" \
+            --arg head "$HEAD_REF" \
+            --arg base "$BASE_REF" \
             --arg date "$FECHA" \
             '{
               embeds: [{
@@ -80,17 +81,22 @@ jobs:
                   {
                     name: "Autor",
                     value: $author,
-                    inline: false
+                    inline: true
                   },
                   {
                     name: "Issue asociado",
                     value: $issue,
-                    inline: false
+                    inline: true
                   },
                   {
-                    name: "Ramas",
-                    value: $branches,
-                    inline: false
+                    name: "Rama origen",
+                    value: $head,
+                    inline: true
+                  },
+                  {
+                    name: "Rama destino",
+                    value: $base,
+                    inline: true
                   },
                   {
                     name: "Fecha",
