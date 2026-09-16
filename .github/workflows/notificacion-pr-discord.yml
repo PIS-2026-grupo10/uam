@@ -1,4 +1,43 @@
+name: Discord - Code Review
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - synchronize
+
+permissions:
+  contents: read
+
+jobs:
+  notificar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Seleccionar canal de Discord
+        id: canal
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MAIN_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ "$BASE_REF" = "develop" ]; then
+            echo "webhook=$DEVELOP_WEBHOOK" >> "$GITHUB_OUTPUT"
+          elif [ "$BASE_REF" = "main" ]; then
+            echo "webhook=$MAIN_WEBHOOK" >> "$GITHUB_OUTPUT"
+          else
+            echo "Rama destino no contemplada: $BASE_REF"
+            exit 1
+          fi
+
       - name: Notificar Pull Request
+        shell: bash
         env:
           DISCORD_WEBHOOK: ${{ steps.canal.outputs.webhook }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -9,9 +48,9 @@
           PR_BODY: ${{ github.event.pull_request.body }}
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
-        shell: bash
+
         run: |
-          # Buscar el primer issue mencionado como #123 en el cuerpo del PR
+          # Obtener el primer issue mencionado como #123
           ISSUE=$(printf '%s' "$PR_BODY" | grep -oE '#[0-9]+' | head -1 || true)
 
           if [ -z "$ISSUE" ]; then
@@ -21,45 +60,55 @@
           # Formatear fecha
           FECHA=$(date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M UTC')
 
+          # Generar mensaje Embed de Discord
           jq -n \
             --arg title "PR #$PR_NUMBER — $PR_TITLE" \
             --arg url "$PR_URL" \
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
-            --arg branches "\`$HEAD_REF\` → \`$BASE_REF\`" \
+            --arg branches "$HEAD_REF → $BASE_REF" \
             --arg date "$FECHA" \
             '{
-              embeds: [{
-                title: $title,
-                url: $url,
-                fields: [
-                  {
-                    name: "Autor",
-                    value: $author,
-                    inline: true
-                  },
-                  {
-                    name: "Issue asociado",
-                    value: $issue,
-                    inline: true
-                  },
-                  {
-                    name: "Ramas",
-                    value: $branches,
-                    inline: false
-                  },
-                  {
-                    name: "Creado",
-                    value: $date,
-                    inline: true
+              embeds: [
+                {
+                  title: $title,
+                  url: $url,
+                  description: "Pull Request disponible para revisión.",
+                  fields: [
+                    {
+                      name: "Autor",
+                      value: $author,
+                      inline: true
+                    },
+                    {
+                      name: "Issue asociado",
+                      value: $issue,
+                      inline: true
+                    },
+                    {
+                      name: "Ramas",
+                      value: $branches,
+                      inline: false
+                    },
+                    {
+                      name: "Creado",
+                      value: $date,
+                      inline: true
+                    }
+                  ],
+                  footer: {
+                    text: "PIS 2026 · Grupo 10 · Revisión de código"
                   }
-                ],
-                footer: {
-                  text: "PIS 2026 · Grupo 10 · Revisión de código"
                 }
-              }]
-            }' |
-          curl -fsS \
+              ]
+            }' > payload.json
+
+          echo "Payload generado:"
+          cat payload.json
+
+          # Enviar mensaje a Discord
+          curl \
+            --fail-with-body \
             -H "Content-Type: application/json" \
-            -d @- \
+            -d @payload.json \
             "$DISCORD_WEBHOOK"
