@@ -4,31 +4,29 @@ Cuando generes o sugieras la descripción de un Pull Request:
 
 - Escribe siempre en español.
 - Analiza únicamente los cambios realizados en el Pull Request.
-- Mantén la estructura definida en el template del repositorio.
-- Genera una descripción breve y clara del objetivo del cambio.
-- Resume los principales cambios realizados.
-- No inventes ni sugieras un Issue asociado.
-- No completes ni modifiques la sección "Pruebas realizadas".
-- La sección "Pruebas realizadas" debe quedar vacía para que sea completada manualmente por el autor del Pull Request.
-- Mantén la sección "Consideraciones" breve y agrega información únicamente cuando sea relevante.
+- Mantén exactamente la estructura definida en el template del repositorio.
+- En "Descripción", genera una descripción breve y clara del objetivo del cambio.
+- En "Cambios realizados", enumera los principales cambios identificados en el Pull Request.
+- No completes ni sugieras contenido para "Issue asociado".
+- No completes ni sugieras contenido para "Pruebas realizadas".
+- "Issue asociado" debe quedar vacío para que sea completado manualmente por el autor.
+- "Pruebas realizadas" debe quedar vacío para que sea completado manualmente por el autor.
+- En "Consideraciones", agrega información únicamente cuando exista alguna consideración relevante derivada de los cambios.
+- Si no existen consideraciones relevantes, deja "Consideraciones" vacío.
+- No inventes información que no pueda determinarse a partir de los cambios del Pull Request.
 
 La descripción debe mantener esta estructura:
 
 ## Descripción
 
-Resumen generado a partir de los cambios realizados.
 
 ## Issue asociado
 
 
 ## Cambios realizados
 
-- Cambio principal.
-- Cambio secundario.
 
 ## Pruebas realizadas
 
 
 ## Consideraciones
-
-Consideraciones relevantes, si corresponde.
