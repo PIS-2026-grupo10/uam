@@ -1,23 +1,60 @@
-name: Notificacion por Discord de Pull Request
+name: Discord - Code Review
 
 on:
   pull_request:
+    branches:
+      - develop
+      - main
     types:
       - opened
       - reopened
+      - ready_for_review
+      - synchronize
+
+permissions:
+  contents: read
+
 jobs:
-  notify:
+  notificar:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Discord notification
+      - name: Seleccionar canal de Discord
+        id: canal
+        shell: bash
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          BASE_REF: ${{ github.base_ref }}
+          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_REVIEW_DEVELOP_WEBHOOK }}
+          MAIN_WEBHOOK: ${{ secrets.DISCORD_REVIEW_MAIN_WEBHOOK }}
+        run: |
+          if [ "$BASE_REF" = "develop" ]; then
+            echo "webhook=$DEVELOP_WEBHOOK" >> "$GITHUB_OUTPUT"
+          elif [ "$BASE_REF" = "main" ]; then
+            echo "webhook=$MAIN_WEBHOOK" >> "$GITHUB_OUTPUT"
+          else
+            echo "Rama destino no contemplada: $BASE_REF"
+            exit 1
+          fi
+
+      - name: Notificar Pull Request
+        env:
+          DISCORD_WEBHOOK: ${{ steps.canal.outputs.webhook }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          curl -H "Content-Type: application/json" \
-            -d "{\"content\":\"Nuevo Pull Request pendiente de revisión\nPR #${PR_NUMBER}: ${PR_TITLE}\nAutor: ${PR_AUTHOR}\n${PR_URL}\"}" \
-            "$DISCORD_WEBHOOK_URL"
+          jq -n \
+            --arg content "🔎 **Pull Request para revisión**
+
+          **PR:** #$PR_NUMBER - $PR_TITLE
+          **Autor:** @$PR_AUTHOR
+          **Ramas:** \`$HEAD_REF\` → \`$BASE_REF\`
+          **Enlace:** $PR_URL" \
+            '{content: $content}' |
+          curl -fsS \
+            -H "Content-Type: application/json" \
+            -d @- \
+            "$DISCORD_WEBHOOK"
