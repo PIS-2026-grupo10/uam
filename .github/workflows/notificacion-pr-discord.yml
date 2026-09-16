@@ -15,6 +15,11 @@ permissions:
 
 jobs:
   notificar:
+    if: >
+      (github.event.action == 'opened' && github.event.pull_request.draft == false) ||
+      (github.event.action == 'reopened' && github.event.pull_request.draft == false) ||
+      github.event.action == 'ready_for_review'
+
     runs-on: ubuntu-latest
 
     steps:
@@ -39,12 +44,15 @@ jobs:
         shell: bash
         env:
           DISCORD_WEBHOOK: ${{ steps.canal.outputs.webhook }}
+
+          PR_ACTION: ${{ github.event.action }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
           PR_BODY: ${{ github.event.pull_request.body }}
+
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
           REPOSITORY: ${{ github.repository }}
@@ -61,12 +69,23 @@ jobs:
             ISSUE="No especificado"
           fi
 
+          if [ "$PR_ACTION" = "opened" ]; then
+            ESTADO="Abierto"
+          elif [ "$PR_ACTION" = "reopened" ]; then
+            ESTADO="Reabierto"
+          elif [ "$PR_ACTION" = "ready_for_review" ]; then
+            ESTADO="Listo para revisión"
+          else
+            ESTADO="$PR_ACTION"
+          fi
+
           FECHA=$(TZ="America/Montevideo" \
             date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M')
 
           jq -n \
             --arg title "PR #$PR_NUMBER - $PR_TITLE" \
             --arg url "$PR_URL" \
+            --arg status "$ESTADO" \
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
             --arg branches "$HEAD_REF → $BASE_REF" \
@@ -76,6 +95,11 @@ jobs:
                 title: $title,
                 url: $url,
                 fields: [
+                  {
+                    name: "Estado",
+                    value: $status,
+                    inline: false
+                  },
                   {
                     name: "Autor",
                     value: $author,
