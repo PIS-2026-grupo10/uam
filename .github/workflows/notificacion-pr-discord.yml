@@ -24,8 +24,8 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
-          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_REVIEW_DEVELOP_WEBHOOK }}
-          MAIN_WEBHOOK: ${{ secrets.DISCORD_REVIEW_MAIN_WEBHOOK }}
+          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MAIN_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           if [ "$BASE_REF" = "develop" ]; then
             echo "webhook=$DEVELOP_WEBHOOK" >> "$GITHUB_OUTPUT"
