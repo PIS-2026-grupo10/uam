@@ -111,7 +111,7 @@ jobs:
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
             --arg reviewers "$REVISORES" \
-            --arg branches "$HEAD_REF ⇨ $BASE_REF" \
+            --arg branches "$HEAD_REF → $BASE_REF" \
             --arg created_date "$FECHA_APERTURA" \
             --arg closed_date "$FECHA_CIERRE" \
             '{
