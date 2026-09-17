@@ -1,0 +1,84 @@
+name: Validar descripción del PR
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  validar-descripcion-pr:
+    name: Validar descripción del PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar campos obligatorios
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.pull_request.body || "";
+
+            const secciones = [
+              "Descripción",
+              "Issue asociado",
+              "Cambios realizados",
+              "Pruebas realizadas",
+              "Consideraciones adicionales"
+            ];
+
+            const faltantes = [];
+
+            for (let i = 0; i < secciones.length; i++) {
+              const actual = secciones[i];
+
+              const inicioRegex = new RegExp(
+                `##\\s*${actual}\\s*\\n`,
+                "i"
+              );
+
+              const match = inicioRegex.exec(body);
+
+              if (!match) {
+                faltantes.push(actual);
+                continue;
+              }
+
+              const inicioContenido = match.index + match[0].length;
+              let finContenido = body.length;
+
+              for (let j = 0; j < secciones.length; j++) {
+                if (secciones[j] === actual) continue;
+
+                const siguienteRegex = new RegExp(
+                  `##\\s*${secciones[j]}\\s*\\n`,
+                  "i"
+                );
+
+                const siguiente = siguienteRegex.exec(
+                  body.substring(inicioContenido)
+                );
+
+                if (siguiente) {
+                  const posicion =
+                    inicioContenido + siguiente.index;
+
+                  if (posicion < finContenido) {
+                    finContenido = posicion;
+                  }
+                }
+              }
+
+              const contenido = body
+                .substring(inicioContenido, finContenido)
+                .trim();
+
+              if (!contenido) {
+                faltantes.push(actual);
+              }
+            }
+
+            if (faltantes.length > 0) {
+              core.setFailed(
+                `El Pull Request tiene campos obligatorios sin completar: ${faltantes.join(", ")}`
+              );
+            }
+
+            console.log("Todas las secciones obligatorias están completas.");
