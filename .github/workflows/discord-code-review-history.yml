@@ -11,6 +11,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: read
 
 jobs:
   notificar-cierre:
@@ -63,6 +64,7 @@ jobs:
       - name: Notificar cierre del Pull Request
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_REVIEW_HISTORY_WEBHOOK }}
 
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -87,7 +89,15 @@ jobs:
             | tr -d '#' || true)
 
           if [ -n "$ISSUE_NUMBER" ]; then
-            ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+            ISSUE_TITLE=$(gh api \
+              "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" \
+              --jq '.title' 2>/dev/null || true)
+
+            if [ -n "$ISSUE_TITLE" ]; then
+              ISSUE="[#${ISSUE_NUMBER} - ${ISSUE_TITLE}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+            else
+              ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+            fi
           else
             ISSUE="No especificado"
           fi

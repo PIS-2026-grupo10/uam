@@ -1,4 +1,4 @@
-name: Discord - Code Review
+name: Validar PR y notificar Code Review
 
 on:
   pull_request:
@@ -7,18 +7,134 @@ on:
       - main
     types:
       - opened
+      - edited
+      - synchronize
       - reopened
       - ready_for_review
 
+  # Permite visualizar y lanzar el workflow manualmente desde Actions.
+  # La validación del PR se realiza únicamente en eventos pull_request.
+  workflow_dispatch:
+
 permissions:
   contents: read
+  issues: read
 
 jobs:
+  validar-descripcion-pr:
+    name: Validar descripción del PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar campos obligatorios
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.pull_request.body || "";
+
+            const secciones = [
+              "Descripción",
+              "Issue asociado",
+              "Cambios realizados",
+              "Pruebas realizadas",
+              "Consideraciones"
+            ];
+
+            const faltantes = [];
+
+            for (let i = 0; i < secciones.length; i++) {
+              const actual = secciones[i];
+
+              // Buscar el encabezado de la sección.
+              const inicioRegex = new RegExp(
+                `##\\s*${actual}\\s*\\r?\\n`,
+                "i"
+              );
+
+              const match = inicioRegex.exec(body);
+
+              // La sección no existe.
+              if (!match) {
+                faltantes.push(actual);
+                continue;
+              }
+
+              const inicioContenido =
+                match.index + match[0].length;
+
+              let finContenido = body.length;
+
+              // Buscar el comienzo de la siguiente sección.
+              for (const otra of secciones) {
+                if (otra === actual) {
+                  continue;
+                }
+
+                const siguienteRegex = new RegExp(
+                  `##\\s*${otra}\\s*\\r?\\n`,
+                  "i"
+                );
+
+                const siguiente = siguienteRegex.exec(
+                  body.substring(inicioContenido)
+                );
+
+                if (siguiente) {
+                  const posicion =
+                    inicioContenido + siguiente.index;
+
+                  if (posicion < finContenido) {
+                    finContenido = posicion;
+                  }
+                }
+              }
+
+              let contenido = body
+                .substring(inicioContenido, finContenido);
+
+              // Los comentarios HTML pertenecen al template
+              // y no cuentan como contenido ingresado por el usuario.
+              contenido = contenido.replace(
+                /<!--[\s\S]*?-->/g,
+                ""
+              );
+
+              // Las viñetas vacías tampoco cuentan como contenido.
+              contenido = contenido.replace(
+                /^\s*[-*•]\s*$/gm,
+                ""
+              );
+
+              contenido = contenido.trim();
+
+              if (!contenido) {
+                faltantes.push(actual);
+              }
+            }
+
+            if (faltantes.length > 0) {
+              core.setFailed(
+                `El Pull Request tiene campos obligatorios sin completar: ${faltantes.join(", ")}`
+              );
+              return;
+            }
+
+            console.log(
+              "Todas las secciones obligatorias están completas."
+            );
+
   notificar:
+    name: Notificar Code Review
+    needs: validar-descripcion-pr
+
     if: >
-      (github.event.action == 'opened' && github.event.pull_request.draft == false) ||
-      (github.event.action == 'reopened' && github.event.pull_request.draft == false) ||
-      github.event.action == 'ready_for_review'
+      github.event_name == 'pull_request' &&
+      (
+        (github.event.action == 'opened' && github.event.pull_request.draft == false) ||
+        (github.event.action == 'reopened' && github.event.pull_request.draft == false) ||
+        github.event.action == 'ready_for_review'
+      )
 
     runs-on: ubuntu-latest
 
@@ -43,6 +159,7 @@ jobs:
       - name: Notificar Pull Request
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           DISCORD_WEBHOOK: ${{ steps.canal.outputs.webhook }}
 
           PR_ACTION: ${{ github.event.action }}
@@ -64,7 +181,15 @@ jobs:
             | tr -d '#' || true)
 
           if [ -n "$ISSUE_NUMBER" ]; then
-            ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+            ISSUE_TITLE=$(gh api \
+              "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" \
+              --jq '.title' 2>/dev/null || true)
+
+            if [ -n "$ISSUE_TITLE" ]; then
+              ISSUE="[#${ISSUE_NUMBER} - ${ISSUE_TITLE}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+            else
+              ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
+            fi
           else
             ISSUE="No especificado"
           fi
