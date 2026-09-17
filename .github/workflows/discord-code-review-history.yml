@@ -29,13 +29,29 @@ jobs:
             "/repos/${REPOSITORY}/pulls/${PR_NUMBER}/reviews" \
             --paginate \
             --jq '
-              [.[] | select(.state == "APPROVED") | .user.login]
-              | unique
-              | join("\n")
+              [.[] | select(.state == "APPROVED")]
+              | sort_by(.submitted_at)
+              | .[]
+              | "\(.user.login)|\(.submitted_at)"
             ')
 
           if [ -z "$REVISORES" ]; then
             REVISORES="Sin aprobaciones"
+          else
+            FORMATEADO=""
+
+            while IFS='|' read -r USUARIO FECHA; do
+              FECHA_UY=$(TZ="America/Montevideo" \
+                date -d "$FECHA" '+%d/%m/%Y %H:%M')
+
+              if [ -z "$FORMATEADO" ]; then
+                FORMATEADO="${USUARIO} — ${FECHA_UY}"
+              else
+                FORMATEADO="${FORMATEADO}"$'\n'"${USUARIO} — ${FECHA_UY}"
+              fi
+            done <<< "$REVISORES"
+
+            REVISORES="$FORMATEADO"
           fi
 
           {
