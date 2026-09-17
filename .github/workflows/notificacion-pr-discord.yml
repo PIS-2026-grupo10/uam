@@ -12,13 +12,12 @@ on:
       - reopened
       - ready_for_review
 
-  # Permite visualizar y lanzar el workflow manualmente desde Actions.
-  # La validación del PR se realiza únicamente en eventos pull_request.
   workflow_dispatch:
 
 permissions:
   contents: read
-  issues: read
+  issues: write
+  pull-requests: write
 
 jobs:
   validar-descripcion-pr:
@@ -27,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Verificar campos obligatorios
+      - name: Verificar campos obligatorios e Issue asociado
         uses: actions/github-script@v8
         with:
           script: |
@@ -42,11 +41,11 @@ jobs:
             ];
 
             const faltantes = [];
+            const contenidos = {};
 
             for (let i = 0; i < secciones.length; i++) {
               const actual = secciones[i];
 
-              // Buscar el encabezado de la sección.
               const inicioRegex = new RegExp(
                 `##\\s*${actual}\\s*\\r?\\n`,
                 "i"
@@ -54,7 +53,6 @@ jobs:
 
               const match = inicioRegex.exec(body);
 
-              // La sección no existe.
               if (!match) {
                 faltantes.push(actual);
                 continue;
@@ -65,7 +63,6 @@ jobs:
 
               let finContenido = body.length;
 
-              // Buscar el comienzo de la siguiente sección.
               for (const otra of secciones) {
                 if (otra === actual) {
                   continue;
@@ -93,20 +90,21 @@ jobs:
               let contenido = body
                 .substring(inicioContenido, finContenido);
 
-              // Los comentarios HTML pertenecen al template
-              // y no cuentan como contenido ingresado por el usuario.
+              // Los comentarios HTML del template no cuentan.
               contenido = contenido.replace(
                 /<!--[\s\S]*?-->/g,
                 ""
               );
 
-              // Las viñetas vacías tampoco cuentan como contenido.
+              // Las viñetas vacías tampoco cuentan.
               contenido = contenido.replace(
                 /^\s*[-*•]\s*$/gm,
                 ""
               );
 
               contenido = contenido.trim();
+
+              contenidos[actual] = contenido;
 
               if (!contenido) {
                 faltantes.push(actual);
@@ -120,8 +118,55 @@ jobs:
               return;
             }
 
+            // Validar que la sección "Issue asociado"
+            // contenga un número con formato #123.
+            const contenidoIssue = contenidos["Issue asociado"];
+
+            const issueMatch = contenidoIssue.match(/#(\d+)/);
+
+            if (!issueMatch) {
+              core.setFailed(
+                "No se especificó un Issue asociado válido. Debe indicarse con el formato #número."
+              );
+              return;
+            }
+
+            const issueNumber = Number(issueMatch[1]);
+
+            // Verificar que el Issue realmente exista.
+            try {
+              const response = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+
+              // GitHub trata los PR también como Issues en esta API.
+              // Evitamos aceptar accidentalmente otro PR como Issue asociado.
+              if (response.data.pull_request) {
+                core.setFailed(
+                  `#${issueNumber} corresponde a un Pull Request y no a un Issue.`
+                );
+                return;
+              }
+
+              console.log(
+                `Issue asociado válido: #${issueNumber} - ${response.data.title}`
+              );
+
+            } catch (error) {
+              if (error.status === 404) {
+                core.setFailed(
+                  `El Issue asociado #${issueNumber} no existe en este repositorio.`
+                );
+                return;
+              }
+
+              throw error;
+            }
+
             console.log(
-              "Todas las secciones obligatorias están completas."
+              "Todas las secciones obligatorias están completas y el Issue asociado es válido."
             );
 
   notificar:
@@ -130,16 +175,45 @@ jobs:
 
     if: >
       github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
       (
-        (github.event.action == 'opened' && github.event.pull_request.draft == false) ||
-        (github.event.action == 'reopened' && github.event.pull_request.draft == false) ||
+        github.event.action == 'opened' ||
+        github.event.action == 'edited' ||
+        github.event.action == 'reopened' ||
         github.event.action == 'ready_for_review'
       )
 
     runs-on: ubuntu-latest
 
     steps:
+      - name: Verificar si el PR ya fue notificado
+        id: verificar-notificacion
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels
+              .map(label => label.name);
+
+            const yaNotificado =
+              labels.includes("code-review-notificado");
+
+            core.setOutput(
+              "ya_notificado",
+              yaNotificado ? "true" : "false"
+            );
+
+            if (yaNotificado) {
+              console.log(
+                "El Pull Request ya fue notificado para Code Review."
+              );
+            } else {
+              console.log(
+                "El Pull Request todavía no fue notificado."
+              );
+            }
+
       - name: Seleccionar canal de Discord
+        if: steps.verificar-notificacion.outputs.ya_notificado == 'false'
         id: canal
         shell: bash
         env:
@@ -157,6 +231,7 @@ jobs:
           fi
 
       - name: Notificar Pull Request
+        if: steps.verificar-notificacion.outputs.ya_notificado == 'false'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -176,29 +251,24 @@ jobs:
 
         run: |
           ISSUE_NUMBER=$(printf '%s' "$PR_BODY" \
+            | sed -n '/##[[:space:]]*Issue asociado/,/##/p' \
             | grep -oE '#[0-9]+' \
             | head -1 \
-            | tr -d '#' || true)
+            | tr -d '#')
 
-          if [ -n "$ISSUE_NUMBER" ]; then
-            ISSUE_TITLE=$(gh api \
-              "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" \
-              --jq '.title' 2>/dev/null || true)
+          ISSUE_TITLE=$(gh api \
+            "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" \
+            --jq '.title')
 
-            if [ -n "$ISSUE_TITLE" ]; then
-              ISSUE="[#${ISSUE_NUMBER} - ${ISSUE_TITLE}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
-            else
-              ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
-            fi
-          else
-            ISSUE="No especificado"
-          fi
+          ISSUE="[#${ISSUE_NUMBER} - ${ISSUE_TITLE}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
 
           if [ "$PR_ACTION" = "opened" ]; then
             ESTADO="Abierto"
           elif [ "$PR_ACTION" = "reopened" ]; then
             ESTADO="Reabierto"
           elif [ "$PR_ACTION" = "ready_for_review" ]; then
+            ESTADO="Listo para revisión"
+          elif [ "$PR_ACTION" = "edited" ]; then
             ESTADO="Listo para revisión"
           else
             ESTADO="$PR_ACTION"
@@ -254,3 +324,40 @@ jobs:
             -H "Content-Type: application/json" \
             -d @payload.json \
             "$DISCORD_WEBHOOK"
+
+      - name: Marcar PR como notificado
+        if: steps.verificar-notificacion.outputs.ya_notificado == 'false'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labelName = "code-review-notificado";
+
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: labelName
+              });
+            } catch (error) {
+              if (error.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                  description: "El PR ya fue notificado en el canal de Code Review"
+                });
+              } else {
+                throw error;
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [labelName]
+            });
+
+            console.log(
+              "Pull Request marcado como notificado."
+            );
