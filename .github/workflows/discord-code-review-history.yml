@@ -45,9 +45,9 @@ jobs:
                 date -d "$FECHA" '+%d/%m/%Y %H:%M')
 
               if [ -z "$FORMATEADO" ]; then
-                FORMATEADO="${USUARIO} — ${FECHA_UY}"
+                FORMATEADO="${USUARIO} - ${FECHA_UY}"
               else
-                FORMATEADO="${FORMATEADO}"$'\n'"${USUARIO} — ${FECHA_UY}"
+                FORMATEADO="${FORMATEADO}"$'\n'"${USUARIO} - ${FECHA_UY}"
               fi
             done <<< "$REVISORES"
 
@@ -70,6 +70,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
           PR_CLOSED_AT: ${{ github.event.pull_request.closed_at }}
           PR_MERGED: ${{ github.event.pull_request.merged }}
 
@@ -97,7 +98,10 @@ jobs:
             ESTADO="Cerrado sin mergear"
           fi
 
-          FECHA=$(TZ="America/Montevideo" \
+          FECHA_APERTURA=$(TZ="America/Montevideo" \
+            date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M')
+
+          FECHA_CIERRE=$(TZ="America/Montevideo" \
             date -d "$PR_CLOSED_AT" '+%d/%m/%Y %H:%M')
 
           jq -n \
@@ -107,8 +111,9 @@ jobs:
             --arg author "$PR_AUTHOR" \
             --arg issue "$ISSUE" \
             --arg reviewers "$REVISORES" \
-            --arg branches "$HEAD_REF → $BASE_REF" \
-            --arg date "$FECHA" \
+            --arg branches "$HEAD_REF ⇨ $BASE_REF" \
+            --arg created_date "$FECHA_APERTURA" \
+            --arg closed_date "$FECHA_CIERRE" \
             '{
               embeds: [{
                 title: $title,
@@ -140,8 +145,13 @@ jobs:
                     inline: false
                   },
                   {
+                    name: "Fecha de apertura",
+                    value: $created_date,
+                    inline: false
+                  },
+                  {
                     name: "Fecha de cierre",
-                    value: $date,
+                    value: $closed_date,
                     inline: false
                   }
                 ]
