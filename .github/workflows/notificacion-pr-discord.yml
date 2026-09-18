@@ -1,1 +1,184 @@
+- name: Verificar campos obligatorios e Issue asociado
+  uses: actions/github-script@v8
+  with:
+    script: |
+      const body = context.payload.pull_request.body || "";
 
+      const secciones = [
+        "Descripción",
+        "Issue asociado",
+        "Cambios realizados",
+        "Pruebas realizadas",
+        "Consideraciones"
+      ];
+
+      function obtenerContenidoSeccion(nombre) {
+        const inicioRegex = new RegExp(
+          `##\\s*${nombre}\\s*\\r?\\n`,
+          "i"
+        );
+
+        const match = inicioRegex.exec(body);
+
+        if (!match) {
+          return null;
+        }
+
+        const inicioContenido =
+          match.index + match[0].length;
+
+        let finContenido = body.length;
+
+        for (const otra of secciones) {
+          if (otra === nombre) {
+            continue;
+          }
+
+          const siguienteRegex = new RegExp(
+            `##\\s*${otra}\\s*\\r?\\n`,
+            "i"
+          );
+
+          const siguiente = siguienteRegex.exec(
+            body.substring(inicioContenido)
+          );
+
+          if (siguiente) {
+            const posicion =
+              inicioContenido + siguiente.index;
+
+            if (posicion < finContenido) {
+              finContenido = posicion;
+            }
+          }
+        }
+
+        let contenido = body.substring(
+          inicioContenido,
+          finContenido
+        );
+
+        // Los comentarios HTML del template no cuentan.
+        contenido = contenido.replace(
+          /<!--[\s\S]*?-->/g,
+          ""
+        );
+
+        // Las viñetas vacías tampoco cuentan.
+        contenido = contenido.replace(
+          /^\s*[-*•]\s*$/gm,
+          ""
+        );
+
+        return contenido.trim();
+      }
+
+      // 1. Descripción
+      const descripcion =
+        obtenerContenidoSeccion("Descripción");
+
+      if (!descripcion) {
+        core.setFailed(
+          'El campo "Descripción" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Descripción válida.");
+
+      // 2. Issue asociado
+      const contenidoIssue =
+        obtenerContenidoSeccion("Issue asociado");
+
+      if (!contenidoIssue) {
+        core.setFailed(
+          'El campo "Issue asociado" es obligatorio.'
+        );
+        return;
+      }
+
+      const issueMatch =
+        contenidoIssue.match(/#(\d+)/);
+
+      if (!issueMatch) {
+        core.setFailed(
+          'El campo "Issue asociado" debe contener un Issue con formato #número.'
+        );
+        return;
+      }
+
+      const issueNumber =
+        Number(issueMatch[1]);
+
+      try {
+        const response =
+          await github.rest.issues.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber
+          });
+
+        if (response.data.pull_request) {
+          core.setFailed(
+            `#${issueNumber} corresponde a un Pull Request y no a un Issue.`
+          );
+          return;
+        }
+
+        console.log(
+          `Issue válido: #${issueNumber} - ${response.data.title}`
+        );
+
+      } catch (error) {
+        if (error.status === 404) {
+          core.setFailed(
+            `El Issue asociado #${issueNumber} no existe en este repositorio.`
+          );
+          return;
+        }
+
+        throw error;
+      }
+
+      // 3. Cambios realizados
+      const cambios =
+        obtenerContenidoSeccion("Cambios realizados");
+
+      if (!cambios) {
+        core.setFailed(
+          'El campo "Cambios realizados" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Cambios realizados válido.");
+
+      // 4. Pruebas realizadas
+      const pruebas =
+        obtenerContenidoSeccion("Pruebas realizadas");
+
+      if (!pruebas) {
+        core.setFailed(
+          'El campo "Pruebas realizadas" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Pruebas realizadas válido.");
+
+      // 5. Consideraciones
+      const consideraciones =
+        obtenerContenidoSeccion("Consideraciones");
+
+      if (!consideraciones) {
+        core.setFailed(
+          'El campo "Consideraciones" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Consideraciones válido.");
+
+      console.log(
+        "Todas las secciones del Pull Request son válidas."
+      );
