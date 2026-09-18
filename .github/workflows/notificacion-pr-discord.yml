@@ -1,256 +1,184 @@
-name: Validar PR y notificar Code Review
+- name: Verificar campos obligatorios e Issue asociado
+  uses: actions/github-script@v8
+  with:
+    script: |
+      const body = context.payload.pull_request.body || "";
 
-on:
-  pull_request:
-    branches:
-      - develop
-      - main
-    types:
-      - opened
-      - edited
-      - synchronize
-      - reopened
-      - ready_for_review
+      const secciones = [
+        "Descripción",
+        "Issue asociado",
+        "Cambios realizados",
+        "Pruebas realizadas",
+        "Consideraciones"
+      ];
 
-  # Permite visualizar y lanzar el workflow manualmente desde Actions.
-  # La validación del PR se realiza únicamente en eventos pull_request.
-  workflow_dispatch:
+      function obtenerContenidoSeccion(nombre) {
+        const inicioRegex = new RegExp(
+          `##\\s*${nombre}\\s*\\r?\\n`,
+          "i"
+        );
 
-permissions:
-  contents: read
-  issues: read
+        const match = inicioRegex.exec(body);
 
-jobs:
-  validar-descripcion-pr:
-    name: Validar descripción del PR
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+        if (!match) {
+          return null;
+        }
 
-    steps:
-      - name: Verificar campos obligatorios
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const body = context.payload.pull_request.body || "";
+        const inicioContenido =
+          match.index + match[0].length;
 
-            const secciones = [
-              "Descripción",
-              "Issue asociado",
-              "Cambios realizados",
-              "Pruebas realizadas",
-              "Consideraciones"
-            ];
+        let finContenido = body.length;
 
-            const faltantes = [];
+        for (const otra of secciones) {
+          if (otra === nombre) {
+            continue;
+          }
 
-            for (let i = 0; i < secciones.length; i++) {
-              const actual = secciones[i];
+          const siguienteRegex = new RegExp(
+            `##\\s*${otra}\\s*\\r?\\n`,
+            "i"
+          );
 
-              // Buscar el encabezado de la sección.
-              const inicioRegex = new RegExp(
-                `##\\s*${actual}\\s*\\r?\\n`,
-                "i"
-              );
+          const siguiente = siguienteRegex.exec(
+            body.substring(inicioContenido)
+          );
 
-              const match = inicioRegex.exec(body);
+          if (siguiente) {
+            const posicion =
+              inicioContenido + siguiente.index;
 
-              // La sección no existe.
-              if (!match) {
-                faltantes.push(actual);
-                continue;
-              }
-
-              const inicioContenido =
-                match.index + match[0].length;
-
-              let finContenido = body.length;
-
-              // Buscar el comienzo de la siguiente sección.
-              for (const otra of secciones) {
-                if (otra === actual) {
-                  continue;
-                }
-
-                const siguienteRegex = new RegExp(
-                  `##\\s*${otra}\\s*\\r?\\n`,
-                  "i"
-                );
-
-                const siguiente = siguienteRegex.exec(
-                  body.substring(inicioContenido)
-                );
-
-                if (siguiente) {
-                  const posicion =
-                    inicioContenido + siguiente.index;
-
-                  if (posicion < finContenido) {
-                    finContenido = posicion;
-                  }
-                }
-              }
-
-              let contenido = body
-                .substring(inicioContenido, finContenido);
-
-              // Los comentarios HTML pertenecen al template
-              // y no cuentan como contenido ingresado por el usuario.
-              contenido = contenido.replace(
-                /<!--[\s\S]*?-->/g,
-                ""
-              );
-
-              // Las viñetas vacías tampoco cuentan como contenido.
-              contenido = contenido.replace(
-                /^\s*[-*•]\s*$/gm,
-                ""
-              );
-
-              contenido = contenido.trim();
-
-              if (!contenido) {
-                faltantes.push(actual);
-              }
+            if (posicion < finContenido) {
+              finContenido = posicion;
             }
+          }
+        }
 
-            if (faltantes.length > 0) {
-              core.setFailed(
-                `El Pull Request tiene campos obligatorios sin completar: ${faltantes.join(", ")}`
-              );
-              return;
-            }
+        let contenido = body.substring(
+          inicioContenido,
+          finContenido
+        );
 
-            console.log(
-              "Todas las secciones obligatorias están completas."
-            );
+        // Los comentarios HTML del template no cuentan.
+        contenido = contenido.replace(
+          /<!--[\s\S]*?-->/g,
+          ""
+        );
 
-  notificar:
-    name: Notificar Code Review
-    needs: validar-descripcion-pr
+        // Las viñetas vacías tampoco cuentan.
+        contenido = contenido.replace(
+          /^\s*[-*•]\s*$/gm,
+          ""
+        );
 
-    if: >
-      github.event_name == 'pull_request' &&
-      (
-        (github.event.action == 'opened' && github.event.pull_request.draft == false) ||
-        (github.event.action == 'reopened' && github.event.pull_request.draft == false) ||
-        github.event.action == 'ready_for_review'
-      )
+        return contenido.trim();
+      }
 
-    runs-on: ubuntu-latest
+      // 1. Descripción
+      const descripcion =
+        obtenerContenidoSeccion("Descripción");
 
-    steps:
-      - name: Seleccionar canal de Discord
-        id: canal
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          DEVELOP_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          MAIN_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: |
-          if [ "$BASE_REF" = "develop" ]; then
-            echo "webhook=$DEVELOP_WEBHOOK" >> "$GITHUB_OUTPUT"
-          elif [ "$BASE_REF" = "main" ]; then
-            echo "webhook=$MAIN_WEBHOOK" >> "$GITHUB_OUTPUT"
-          else
-            echo "Rama destino no contemplada: $BASE_REF"
-            exit 1
-          fi
+      if (!descripcion) {
+        core.setFailed(
+          'El campo "Descripción" es obligatorio.'
+        );
+        return;
+      }
 
-      - name: Notificar Pull Request
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DISCORD_WEBHOOK: ${{ steps.canal.outputs.webhook }}
+      console.log("Descripción válida.");
 
-          PR_ACTION: ${{ github.event.action }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+      // 2. Issue asociado
+      const contenidoIssue =
+        obtenerContenidoSeccion("Issue asociado");
 
-          HEAD_REF: ${{ github.head_ref }}
-          BASE_REF: ${{ github.base_ref }}
-          REPOSITORY: ${{ github.repository }}
+      if (!contenidoIssue) {
+        core.setFailed(
+          'El campo "Issue asociado" es obligatorio.'
+        );
+        return;
+      }
 
-        run: |
-          ISSUE_NUMBER=$(printf '%s' "$PR_BODY" \
-            | grep -oE '#[0-9]+' \
-            | head -1 \
-            | tr -d '#' || true)
+      const issueMatch =
+        contenidoIssue.match(/#(\d+)/);
 
-          if [ -n "$ISSUE_NUMBER" ]; then
-            ISSUE_TITLE=$(gh api \
-              "/repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" \
-              --jq '.title' 2>/dev/null || true)
+      if (!issueMatch) {
+        core.setFailed(
+          'El campo "Issue asociado" debe contener un Issue con formato #número.'
+        );
+        return;
+      }
 
-            if [ -n "$ISSUE_TITLE" ]; then
-              ISSUE="[#${ISSUE_NUMBER} - ${ISSUE_TITLE}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
-            else
-              ISSUE="[#${ISSUE_NUMBER}](https://github.com/${REPOSITORY}/issues/${ISSUE_NUMBER})"
-            fi
-          else
-            ISSUE="No especificado"
-          fi
+      const issueNumber =
+        Number(issueMatch[1]);
 
-          if [ "$PR_ACTION" = "opened" ]; then
-            ESTADO="Abierto"
-          elif [ "$PR_ACTION" = "reopened" ]; then
-            ESTADO="Reabierto"
-          elif [ "$PR_ACTION" = "ready_for_review" ]; then
-            ESTADO="Listo para revisión"
-          else
-            ESTADO="$PR_ACTION"
-          fi
+      try {
+        const response =
+          await github.rest.issues.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: issueNumber
+          });
 
-          FECHA=$(TZ="America/Montevideo" \
-            date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M')
+        if (response.data.pull_request) {
+          core.setFailed(
+            `#${issueNumber} corresponde a un Pull Request y no a un Issue.`
+          );
+          return;
+        }
 
-          jq -n \
-            --arg title "PR #$PR_NUMBER - $PR_TITLE" \
-            --arg url "$PR_URL" \
-            --arg status "$ESTADO" \
-            --arg author "$PR_AUTHOR" \
-            --arg issue "$ISSUE" \
-            --arg branches "$HEAD_REF → $BASE_REF" \
-            --arg date "$FECHA" \
-            '{
-              embeds: [{
-                title: $title,
-                url: $url,
-                fields: [
-                  {
-                    name: "Estado",
-                    value: $status,
-                    inline: false
-                  },
-                  {
-                    name: "Autor",
-                    value: $author,
-                    inline: false
-                  },
-                  {
-                    name: "Issue asociado",
-                    value: $issue,
-                    inline: false
-                  },
-                  {
-                    name: "Ramas",
-                    value: $branches,
-                    inline: false
-                  },
-                  {
-                    name: "Fecha",
-                    value: $date,
-                    inline: false
-                  }
-                ]
-              }]
-            }' > payload.json
+        console.log(
+          `Issue válido: #${issueNumber} - ${response.data.title}`
+        );
 
-          curl \
-            --fail-with-body \
-            -H "Content-Type: application/json" \
-            -d @payload.json \
-            "$DISCORD_WEBHOOK"
+      } catch (error) {
+        if (error.status === 404) {
+          core.setFailed(
+            `El Issue asociado #${issueNumber} no existe en este repositorio.`
+          );
+          return;
+        }
+
+        throw error;
+      }
+
+      // 3. Cambios realizados
+      const cambios =
+        obtenerContenidoSeccion("Cambios realizados");
+
+      if (!cambios) {
+        core.setFailed(
+          'El campo "Cambios realizados" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Cambios realizados válido.");
+
+      // 4. Pruebas realizadas
+      const pruebas =
+        obtenerContenidoSeccion("Pruebas realizadas");
+
+      if (!pruebas) {
+        core.setFailed(
+          'El campo "Pruebas realizadas" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Pruebas realizadas válido.");
+
+      // 5. Consideraciones
+      const consideraciones =
+        obtenerContenidoSeccion("Consideraciones");
+
+      if (!consideraciones) {
+        core.setFailed(
+          'El campo "Consideraciones" es obligatorio.'
+        );
+        return;
+      }
+
+      console.log("Consideraciones válido.");
+
+      console.log(
+        "Todas las secciones del Pull Request son válidas."
+      );
