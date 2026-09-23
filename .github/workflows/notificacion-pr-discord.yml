@@ -139,8 +139,8 @@ jobs:
         if: steps.verificar-notificacion.outputs.ya_notificado == 'false'
         shell: bash
         env:
-          DISCORD_WEBHOOK_DEVELOP: ${{ secrets.DISCORD_REVIEW_DEVELOP_WEBHOOK }}
-          DISCORD_WEBHOOK_MAIN: ${{ secrets.DISCORD_REVIEW_MAIN_WEBHOOK }}
+          DISCORD_WEBHOOK_DEVELOP: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_MAIN: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -155,9 +155,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$BASE_REF" = "main" ]; then
-            DISCORD_WEBHOOK="$DISCORD_WEBHOOK_URL"
+            DISCORD_WEBHOOK="$DISCORD_WEBHOOK_MAIN"
           else
-            DISCORD_WEBHOOK="$DISCORD_WEBHOOK_URL"
+            DISCORD_WEBHOOK="$DISCORD_WEBHOOK_DEVELOP"
           fi
           if [ -z "$DISCORD_WEBHOOK" ]; then
             echo "::error::Falta configurar el webhook de Discord para $BASE_REF."
