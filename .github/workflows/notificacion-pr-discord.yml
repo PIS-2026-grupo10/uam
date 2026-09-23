@@ -181,8 +181,8 @@ jobs:
               ESTADO="Abierto"
               ;;
           esac
-          FECHA=$(TZ="America/Montevideo" \date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M')
-          jq -n \--arg title "PR #$PR_NUMBER - $PR_TITLE" \--arg url "$PR_URL" \--arg estado "$ESTADO" \--arg author "$PR_AUTHOR" \--arg issue "$ISSUE" \--arg branches "$HEAD_REF → $BASE_REF" \--arg date "$FECHA" \
+          FECHA=$(TZ="America/Montevideo" date -d "$PR_CREATED_AT" '+%d/%m/%Y %H:%M')
+          jq -n --arg title "PR #$PR_NUMBER - $PR_TITLE" --arg url "$PR_URL" --arg estado "$ESTADO" --arg author "$PR_AUTHOR" --arg issue "$ISSUE" --arg branches "$HEAD_REF → $BASE_REF" --arg date "$FECHA" \
             '{
               allowed_mentions: {
                 parse: []
@@ -219,7 +219,7 @@ jobs:
                 ]
               }]
             }' > payload.json
-          curl \--fail-with-body \--silent \--show-error \-H "Content-Type: application/json" \--data-binary @payload.json \"$DISCORD_WEBHOOK"
+          curl --fail-with-body --silent --show-error -H "Content-Type: application/json" --data-binary @payload.json "$DISCORD_WEBHOOK"
       - name: Marcar PR como notificado
         if: steps.verificar-notificacion.outputs.ya_notificado == 'false'
         uses: actions/github-script@v8
