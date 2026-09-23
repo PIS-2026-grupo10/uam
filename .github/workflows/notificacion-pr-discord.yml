@@ -155,9 +155,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$BASE_REF" = "main" ]; then
-            DISCORD_WEBHOOK="$DISCORD_WEBHOOK"
+            DISCORD_WEBHOOK="$DISCORD_WEBHOOK_URL"
           else
-            DISCORD_WEBHOOK="$DISCORD_WEBHOOK"
+            DISCORD_WEBHOOK="$DISCORD_WEBHOOK_URL"
           fi
           if [ -z "$DISCORD_WEBHOOK" ]; then
             echo "::error::Falta configurar el webhook de Discord para $BASE_REF."
